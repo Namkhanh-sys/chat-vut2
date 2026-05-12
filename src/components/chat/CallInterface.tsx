@@ -77,13 +77,21 @@ export function CallInterface({ roomId, userId, userName, isVideo, onClose, mess
   useEffect(() => {
     let zp: any = null;
 
+    const handleEndCallInDb = async () => {
+      if (!messageId) return;
+      const table = isGroup ? "messages" : "direct_messages";
+      
+      // Chúng ta sử dụng fetch trực tiếp để tăng tốc độ xử lý khi đóng tab
+      await supabase
+        .from(table as any)
+        .update({ content: `CALL_ENDED:${isVideo ? "video" : "voice"}` } as any)
+        .eq("id", messageId);
+    };
+
     const initCall = async () => {
       if (!containerRef.current) return;
 
-      // Sanitize userId (ZegoCloud only accepts alphanumeric and '_')
       const safeUserId = userId.replace(/[^a-zA-Z0-9_]/g, '_');
-
-      // Generate kit token
       const kitToken = ZegoUIKitPrebuilt.generateKitTokenForTest(
         ZEGO_APP_ID,
         ZEGO_SERVER_SECRET,
@@ -92,47 +100,42 @@ export function CallInterface({ roomId, userId, userName, isVideo, onClose, mess
         userName
       );
 
-      // Create instance
       zp = ZegoUIKitPrebuilt.create(kitToken);
 
-      // Start call
       zp.joinRoom({
         container: containerRef.current,
         scenario: {
           mode: isGroup ? ZegoUIKitPrebuilt.GroupCall : ZegoUIKitPrebuilt.OneONoneCall,
         },
         showScreenSharingButton: true,
-        showPreJoinView: true, // Hiện màn hình kiểm tra Mic/Camera trước khi vào
+        showPreJoinView: true,
         turnOnCameraWhenJoining: isVideo,
         turnOnMicrophoneWhenJoining: true,
-        showMyCameraToggleButton: isVideo, // Chỉ hiện nút Camera nếu là cuộc gọi Video
+        showMyCameraToggleButton: isVideo,
         showMyMicrophoneToggleButton: true,
         showAudioVideoSettingsButton: true,
-        useFrontFacingCamera: true, // Ưu tiên camera trước (nếu là mobile/laptop)
+        useFrontFacingCamera: true,
         onJoinRoom: () => {
-          setIsLoading(false); // Ẩn loading ngay khi vừa kết nối thành công
+          setIsLoading(false);
         },
         onLeaveRoom: async () => {
-          if (messageId) {
-            // Khi rời phòng, kiểm tra lại số người thực tế. 
-            // Nếu chỉ còn 1 mình mình hoặc không còn ai, hãy kết thúc cuộc gọi.
-            const isLastPerson = participantCountRef.current <= 1;
-            
-            if (isLastPerson) {
-              const table = isGroup ? "messages" : "direct_messages";
-              await supabase
-                .from(table as any)
-                .update({ content: `CALL_ENDED:${isVideo ? "video" : "voice"}` } as any)
-                .eq("id", messageId);
-            }
+          if (participantCountRef.current <= 1) {
+            await handleEndCallInDb();
           }
           onClose();
         },
       });
-
-      // Zego UIKit renders synchronously but might take a moment to load network assets.
-      // We hide loading overlay in onJoinRoom OR after a 5s timeout as a fallback.
     };
+
+    // Lắng nghe sự kiện đóng tab/trình duyệt
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      // Nếu là người cuối cùng, cố gắng kết thúc cuộc gọi trong DB
+      if (participantCountRef.current <= 1) {
+        handleEndCallInDb();
+      }
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
 
     const timeoutId = setTimeout(() => {
       setIsLoading(false);
@@ -141,6 +144,7 @@ export function CallInterface({ roomId, userId, userName, isVideo, onClose, mess
     initCall();
 
     return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
       clearTimeout(timeoutId);
       if (zp) {
         zp.destroy();
