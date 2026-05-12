@@ -155,18 +155,6 @@ export function CallInterface({ roomId, userId, userName, isVideo, onClose, mess
 
   return (
     <div className="fixed inset-0 z-[100] bg-black">
-      {/* Nút thoát nổi ở góc */}
-      <div className="absolute top-4 right-4 z-[110]">
-        <Button 
-          variant="secondary" 
-          size="icon" 
-          onClick={onClose} 
-          className="rounded-full bg-black/50 text-white hover:bg-black/70 backdrop-blur-md border-none"
-        >
-          <X className="h-5 w-5" />
-        </Button>
-      </div>
-
       <div className="h-full w-full relative">
         {isLoading && (
           <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/90 text-white backdrop-blur-sm">
