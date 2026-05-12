@@ -130,12 +130,15 @@ export function CallInterface({ roomId, userId, userName, isVideo, onClose, mess
       });
 
       // Zego UIKit renders synchronously but might take a moment to load network assets.
-      // We now hide loading overlay in onJoinRoom callback for maximum speed.
-    };
+      // We hide loading overlay in onJoinRoom OR after a 5s timeout as a fallback.
+    const timeoutId = setTimeout(() => {
+      setIsLoading(false);
+    }, 5000);
 
     initCall();
 
     return () => {
+      clearTimeout(timeoutId);
       if (zp) {
         zp.destroy();
       }
