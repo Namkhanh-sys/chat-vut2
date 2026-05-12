@@ -17,6 +17,7 @@ import { CreateGroupDialog } from "./CreateGroupDialog";
 import { SearchUsersDialog } from "@/components/friends/SearchUsersDialog";
 import { FriendPanel } from "@/components/friends/FriendPanel";
 import { useFriends } from "@/hooks/use-friends";
+import { useSidebar } from "@/hooks/use-sidebar";
 import { toast } from "sonner";
 
 interface GroupRow {
@@ -32,6 +33,7 @@ export function Sidebar() {
   const { user, profile, signOut } = useAuth();
   const { t, lang, setLang } = useI18n();
   const { theme, toggle } = useTheme();
+  const { setIsOpen } = useSidebar();
   const navigate = useNavigate();
   const params = useParams({ strict: false }) as { groupId?: string };
   const qc = useQueryClient();
@@ -257,6 +259,7 @@ export function Sidebar() {
                       <Link
                         to="/app/$groupId"
                         params={{ groupId: g.id }}
+                        onClick={() => setIsOpen(false)}
                         className={`flex items-center gap-3 rounded-2xl px-3 py-2.5 transition ${
                           active ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-soft" : "hover:bg-sidebar-accent"
                         }`}

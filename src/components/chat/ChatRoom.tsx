@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient, useInfiniteQuery } from "@tanstack/react-query";
-import { Send, Paperclip, X, Reply, MoreHorizontal, Pencil, Trash2, Users, Loader2, Smile } from "lucide-react";
+import { Send, Paperclip, X, Reply, MoreHorizontal, Pencil, Trash2, Users, Loader2, Smile, Menu } from "lucide-react";
 import { format, isToday, isYesterday } from "date-fns";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -22,6 +22,7 @@ import { generateRoomId } from "@/lib/zego";
 import { Phone, Video, Shield, ShieldCheck, MessageSquare, PhoneCall } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
+import { useSidebar } from "@/hooks/use-sidebar";
 
 interface Message {
   id: string;
@@ -54,6 +55,7 @@ export function ChatRoom({ groupId }: { groupId: string }) {
   const { t, lang } = useI18n();
   const { theme } = useTheme();
   const qc = useQueryClient();
+  const { toggle } = useSidebar();
   const { typingUsers, markAsTyping, clearTyping } = useTypingIndicators(groupId);
   const [text, setText] = useState("");
   const [replyTo, setReplyTo] = useState<Message | null>(null);
@@ -333,8 +335,16 @@ export function ChatRoom({ groupId }: { groupId: string }) {
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
-      <div className="flex items-center gap-3 border-b bg-card px-5 py-3 shadow-card">
-        <Avatar className="h-10 w-10">
+      <div className="flex items-center gap-3 border-b bg-card px-4 py-3 shadow-card md:px-5">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-9 w-9 shrink-0 md:hidden"
+          onClick={toggle}
+        >
+          <Menu className="h-5 w-5" />
+        </Button>
+        <Avatar className="h-10 w-10 shrink-0">
           <AvatarImage src={group.avatar_url ?? undefined} />
           <AvatarFallback className="bg-gradient-mint">{group.name[0]?.toUpperCase()}</AvatarFallback>
         </Avatar>

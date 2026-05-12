@@ -114,9 +114,10 @@ export function CallInterface({ roomId, userId, userName, isVideo, onClose, mess
         },
         onLeaveRoom: async () => {
           if (messageId) {
+            // Khi rời phòng, kiểm tra lại số người thực tế. 
+            // Nếu chỉ còn 1 mình mình hoặc không còn ai, hãy kết thúc cuộc gọi.
             const isLastPerson = participantCountRef.current <= 1;
             
-            // Chỉ cập nhật "Đã kết thúc" nếu bạn là người cuối cùng rời khỏi phòng
             if (isLastPerson) {
               const table = isGroup ? "messages" : "direct_messages";
               await supabase

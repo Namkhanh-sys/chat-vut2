@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useParams, useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Send, Loader2, Phone, Video, Paperclip, Smile, MoreHorizontal, Trash2, Reply, X } from "lucide-react";
+import { ArrowLeft, Send, Loader2, Phone, Video, Paperclip, Smile, MoreHorizontal, Trash2, Reply, X, Menu } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -18,6 +18,7 @@ import { CallInterface } from "@/components/chat/CallInterface";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { generateRoomId } from "@/lib/zego";
 import { useI18n } from "@/lib/i18n";
+import { useSidebar } from "@/hooks/use-sidebar";
 
 interface OtherUserProfile {
   id: string;
@@ -33,6 +34,7 @@ export function DMChat() {
   const { user, profile } = useAuth();
   const { theme } = useTheme();
   const { t } = useI18n();
+  const { toggle } = useSidebar();
   const navigate = useNavigate();
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [otherUser, setOtherUser] = useState<OtherUserProfile | null>(null);
@@ -210,7 +212,15 @@ export function DMChat() {
     <div className="flex h-full flex-col bg-background">
       {/* Header */}
       <div className="flex items-center gap-3 border-b bg-card/50 backdrop-blur-md px-4 py-3 sticky top-0 z-10">
-        <Button variant="ghost" size="icon" className="rounded-xl h-9 w-9" onClick={() => navigate({ to: "/app" })}>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-9 w-9 shrink-0 md:hidden"
+          onClick={toggle}
+        >
+          <Menu className="h-5 w-5" />
+        </Button>
+        <Button variant="ghost" size="icon" className="hidden md:flex rounded-xl h-9 w-9" onClick={() => navigate({ to: "/app" })}>
           <ArrowLeft className="h-5 w-5" />
         </Button>
         {otherUser ? (
