@@ -2,6 +2,8 @@ import { createFileRoute, Outlet, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { SidebarProvider, useSidebar } from "@/hooks/use-sidebar";
+import { Sidebar } from "@/components/chat/Sidebar";
+import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/app")({
