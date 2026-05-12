@@ -102,7 +102,7 @@ export function CallInterface({ roomId, userId, userName, isVideo, onClose, mess
           mode: isGroup ? ZegoUIKitPrebuilt.GroupCall : ZegoUIKitPrebuilt.OneONoneCall,
         },
         showScreenSharingButton: true,
-        showPreJoinView: false, // Tắt màn hình chờ để vào cuộc gọi nhanh hơn
+        showPreJoinView: true, // Hiện màn hình kiểm tra Mic/Camera trước khi vào
         turnOnCameraWhenJoining: isVideo,
         turnOnMicrophoneWhenJoining: true,
         showMyCameraToggleButton: isVideo, // Chỉ hiện nút Camera nếu là cuộc gọi Video
