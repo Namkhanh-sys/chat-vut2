@@ -1,4 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute } from "@tanstack/react-router";
+import { useI18n } from "@/lib/i18n";
 import { useSidebar } from "@/hooks/use-sidebar";
 import { Button } from "@/components/ui/button";
 import { Menu, MessageCircleHeart } from "lucide-react";
