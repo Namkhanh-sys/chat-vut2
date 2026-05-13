@@ -10,7 +10,7 @@ import {
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/hooks/use-auth";
-import { I18nProvider } from "@/lib/i18n";
+import { I18nProvider, useI18n } from "@/lib/i18n";
 import { ThemeProvider } from "@/hooks/use-theme";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { errorLogger } from "@/lib/error-logger";

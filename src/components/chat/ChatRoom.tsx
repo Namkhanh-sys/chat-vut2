@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient, useInfiniteQuery } from "@tanstack/react-query";
-import { Send, Paperclip, X, Reply, MoreHorizontal, Pencil, Trash2, Users, Loader2, Smile, Menu } from "lucide-react";
+import { Send, Paperclip, X, Reply, MoreHorizontal, Pencil, Trash2, Users, Loader2, Smile, Menu, ShieldAlert, ShieldCheck, Shield, Phone, Video, MessageSquare, PhoneCall } from "lucide-react";
 import { format, isToday, isYesterday } from "date-fns";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -19,10 +19,11 @@ import { TypingIndicatorsList } from "./TypingIndicators";
 import { cn } from "@/lib/utils";
 import { CallInterface } from "./CallInterface";
 import { generateRoomId } from "@/lib/zego";
-import { Phone, Video, Shield, ShieldCheck, MessageSquare, PhoneCall } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { useSidebar } from "@/hooks/use-sidebar";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerTrigger } from "@/components/ui/drawer";
 
 interface Message {
   id: string;
@@ -43,6 +44,8 @@ interface GroupInfo {
   name: string;
   description: string | null;
   avatar_url: string | null;
+  owner_id: string;
+  is_chat_locked: boolean;
 }
 
 const EMOJIS = ["❤️", "😂", "👍", "🎉", "🔥", "😮", "😢", "🙏"];
@@ -61,15 +64,16 @@ export function ChatRoom({ groupId }: { groupId: string }) {
   const [replyTo, setReplyTo] = useState<Message | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
-  const [callConfig, setCallConfig] = useState<{ isVideo: boolean, messageId?: string } | null>(null);
+  const [callConfig, setCallConfig] = useState<{ isVideo: boolean, messageId?: string, isGroup?: boolean } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const groupAvatarInputRef = useRef<HTMLInputElement>(null);
 
   // Group info
   const { data: group } = useQuery({
     queryKey: ["group", groupId],
     queryFn: async (): Promise<GroupInfo | null> => {
-      const { data, error } = await supabase.from("groups").select("id, name, description, avatar_url").eq("id", groupId).maybeSingle();
+      const { data, error } = await (supabase.from("groups") as any).select("id, name, description, avatar_url, owner_id, is_chat_locked").eq("id", groupId).maybeSingle();
       if (error) throw error;
       return data;
     },
@@ -128,6 +132,11 @@ export function ChatRoom({ groupId }: { groupId: string }) {
   const messages = useMemo(() => {
     return infiniteData?.pages.flat().reverse() ?? [];
   }, [infiniteData]);
+
+  const isOwner = group?.owner_id === user?.id;
+  const isAdmin = myMembership?.role === 'admin' || isOwner;
+  const isChatLocked = group?.is_chat_locked ?? false;
+  const canChat = !isChatLocked || isAdmin;
 
   const isLoading = isLoadingMessages && messages.length === 0;
 
@@ -324,6 +333,72 @@ export function ChatRoom({ groupId }: { groupId: string }) {
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
+  const handleGroupAvatar = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user || !group) return;
+
+    setSending(true);
+    const result = await uploadFile(file, user.id, (progress) => {
+      if (progress.status === "error") {
+        toast.error(progress.error || "Upload failed");
+      }
+    });
+
+    if (result) {
+      const { error } = await (supabase
+        .from("groups") as any)
+        .update({ avatar_url: result.publicUrl })
+        .eq("id", groupId);
+      
+      if (error) {
+        toast.error(error.message);
+      } else {
+        qc.invalidateQueries({ queryKey: ["group", groupId] });
+        toast.success(t("common.success"));
+      }
+    }
+
+    setSending(false);
+    if (groupAvatarInputRef.current) groupAvatarInputRef.current.value = "";
+  };
+
+  const handleLeaveGroup = async () => {
+    if (!user || !group) return;
+    if (isOwner) {
+      toast.error("Vui lòng chuyển chủ nhóm trước khi rời!");
+      return;
+    }
+    if (!confirm(t("group.leaveConfirm"))) return;
+
+    const { error } = await supabase
+      .from("group_members")
+      .delete()
+      .eq("group_id", groupId)
+      .eq("user_id", user.id);
+    
+    if (error) {
+      toast.error(error.message);
+    } else {
+      window.location.href = "/";
+    }
+  };
+
+  const handleDeleteGroup = async () => {
+    if (!isOwner) return;
+    if (!confirm(t("group.deleteConfirm"))) return;
+
+    const { error } = await supabase
+      .from("groups")
+      .delete()
+      .eq("id", groupId);
+    
+    if (error) {
+      toast.error(error.message);
+    } else {
+      window.location.href = "/";
+    }
+  };
+
   if (!group) {
     return (
       <div className="grid h-full place-items-center">
@@ -344,10 +419,22 @@ export function ChatRoom({ groupId }: { groupId: string }) {
         >
           <Menu className="h-5 w-5" />
         </Button>
-        <Avatar className="h-10 w-10 shrink-0">
-          <AvatarImage src={group.avatar_url ?? undefined} />
-          <AvatarFallback className="bg-gradient-mint">{group.name[0]?.toUpperCase()}</AvatarFallback>
-        </Avatar>
+        <div className="relative group/avatar">
+          <Avatar className="h-10 w-10 shrink-0">
+            <AvatarImage src={group.avatar_url ?? undefined} />
+            <AvatarFallback className="bg-gradient-mint">{group.name[0]?.toUpperCase()}</AvatarFallback>
+          </Avatar>
+          {isAdmin && (
+            <button 
+              onClick={() => groupAvatarInputRef.current?.click()}
+              className="absolute inset-0 flex items-center justify-center bg-black/40 text-white rounded-full opacity-0 group-hover/avatar:opacity-100 transition-opacity"
+              title={t("group.changeAvatar")}
+            >
+              <Pencil className="h-3 w-3" />
+            </button>
+          )}
+          <input ref={groupAvatarInputRef} type="file" hidden accept="image/*" onChange={handleGroupAvatar} />
+        </div>
         <div className="flex-1 min-w-0">
           <div className="truncate font-display text-lg font-bold">{group.name}</div>
           <div className="flex items-center gap-1 text-xs text-muted-foreground">
@@ -395,7 +482,33 @@ export function ChatRoom({ groupId }: { groupId: string }) {
           >
             <Video className={cn("h-5 w-5", myMembership?.can_call === false && "opacity-50")} />
           </Button>
-          <GroupMembersSheet groupId={groupId} currentUserId={user?.id} isAdmin={myMembership?.role === 'admin'} />
+          <GroupMembersSheet 
+            groupId={groupId} 
+            currentUserId={user?.id} 
+            isAdmin={myMembership?.role === 'admin' || group.owner_id === user?.id} 
+            isOwner={group.owner_id === user?.id}
+            isChatLocked={group.is_chat_locked}
+            ownerId={group.owner_id}
+          />
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="rounded-xl h-9 w-9 text-muted-foreground hover:text-primary">
+                <MoreHorizontal className="h-5 w-5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuItem onClick={handleLeaveGroup} className="text-destructive focus:text-destructive">
+                <Trash2 className="mr-2 h-4 w-4" />
+                {t("group.leave")}
+              </DropdownMenuItem>
+              {isOwner && (
+                <DropdownMenuItem onClick={handleDeleteGroup} className="text-destructive focus:text-destructive font-bold">
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  {t("group.delete")}
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
@@ -522,22 +635,28 @@ export function ChatRoom({ groupId }: { groupId: string }) {
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
-                if (myMembership?.can_message !== false) {
+                if (myMembership?.can_message !== false && canChat) {
                   handleSend();
                   clearTyping();
                 }
               }
             }}
-            placeholder={myMembership?.can_message === false ? t("permissions.denied") : t("chat.placeholder")}
+            placeholder={
+              myMembership?.can_message === false 
+                ? t("permissions.denied") 
+                : isChatLocked && !isAdmin 
+                  ? t("permissions.lockChat") 
+                  : t("chat.placeholder")
+            }
             rows={1}
-            disabled={sending || myMembership?.can_message === false}
+            disabled={sending || myMembership?.can_message === false || (isChatLocked && !isAdmin)}
             className="min-h-[42px] max-h-32 flex-1 resize-none rounded-2xl border-none bg-muted/50 px-4 py-2.5 text-sm focus-visible:ring-1 focus-visible:ring-primary/20 transition-all"
           />
           <Button
             size="icon"
             className="h-10 w-10 shrink-0 rounded-full bg-gradient-primary shadow-lg shadow-primary/20 hover:scale-105 active:scale-95 transition-all"
             onClick={handleSend}
-            disabled={(!text.trim() && !editingId) || sending || myMembership?.can_message === false}
+            disabled={(!text.trim() && !editingId) || sending || myMembership?.can_message === false || (isChatLocked && !isAdmin)}
           >
             {sending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
           </Button>
@@ -785,7 +904,21 @@ function MessageActions({ onReply, onEdit, onDelete, onReact, onOpenChange, canE
   );
 }
 
-function GroupMembersSheet({ groupId, currentUserId, isAdmin }: { groupId: string, currentUserId?: string, isAdmin?: boolean }) {
+function GroupMembersSheet({ 
+  groupId, 
+  currentUserId, 
+  isAdmin, 
+  isOwner,
+  isChatLocked,
+  ownerId
+}: { 
+  groupId: string, 
+  currentUserId?: string, 
+  isAdmin?: boolean,
+  isOwner?: boolean,
+  isChatLocked?: boolean,
+  ownerId?: string
+}) {
   const [open, setOpen] = useState(false);
   const { t } = useI18n();
   const qc = useQueryClient();
@@ -820,6 +953,218 @@ function GroupMembersSheet({ groupId, currentUserId, isAdmin }: { groupId: strin
     }
   };
 
+  const handleToggleChatLock = async (locked: boolean) => {
+    const { error } = await (supabase
+      .from("groups") as any)
+      .update({ is_chat_locked: locked })
+      .eq("id", groupId);
+    
+    if (error) {
+      toast.error(error.message);
+    } else {
+      qc.invalidateQueries({ queryKey: ["group", groupId] });
+      toast.success(t("common.success"));
+    }
+  };
+
+  const handleChangeRole = async (userId: string, newRole: 'admin' | 'member') => {
+    const { error } = await (supabase
+      .from("group_members") as any)
+      .update({ role: newRole })
+      .eq("group_id", groupId)
+      .eq("user_id", userId);
+    
+    if (error) {
+      toast.error(error.message);
+    } else {
+      qc.invalidateQueries({ queryKey: ["group-members", groupId] });
+      if (userId === currentUserId) {
+        qc.invalidateQueries({ queryKey: ["my-membership", groupId, currentUserId] });
+      }
+      toast.success(t("common.success"));
+    }
+  };
+  const handleTransferOwnership = async (userId: string) => {
+    if (!isOwner) return;
+    if (!confirm(t("group.transferConfirm"))) return;
+
+    const { error } = await (supabase
+      .from("groups") as any)
+      .update({ owner_id: userId })
+      .eq("id", groupId);
+    
+    if (error) {
+      toast.error(error.message);
+    } else {
+      // Also make the new owner an admin if they weren't already
+      await (supabase.from("group_members") as any).update({ role: 'admin' }).eq("group_id", groupId).eq("user_id", userId);
+      
+      qc.invalidateQueries({ queryKey: ["group", groupId] });
+      qc.invalidateQueries({ queryKey: ["group-members", groupId] });
+      if (userId === currentUserId || currentUserId) {
+        qc.invalidateQueries({ queryKey: ["my-membership", groupId, currentUserId] });
+      }
+      toast.success(t("common.success"));
+    }
+  };
+
+  const isMobile = useIsMobile();
+
+  const Content = (
+    <div className="flex flex-col h-full overflow-hidden">
+      <div className={cn("bg-gradient-primary p-4 text-primary-foreground", isMobile ? "rounded-t-none" : "rounded-t-3xl")}>
+        <h3 className="font-display text-lg font-bold flex items-center gap-2">
+          <Users className="h-5 w-5" />
+          {t("permissions.title")}
+        </h3>
+        <p className="text-xs opacity-80">{members?.length ?? 0} {t("permissions.membersCount")}</p>
+      </div>
+      <div className={cn("overflow-y-auto p-2 bg-card scrollbar-thin", isMobile ? "max-h-[70vh]" : "max-h-[450px]")}>
+        {isLoading ? (
+          <div className="flex h-32 items-center justify-center">
+            <Loader2 className="h-6 w-6 animate-spin text-primary opacity-50" />
+          </div>
+        ) : (
+          <div className="space-y-1">
+            {isAdmin && (
+              <div className="px-2 py-3 border-b mb-2">
+                <div className="flex items-center justify-between gap-3 p-3 rounded-2xl bg-muted/30 border border-dashed border-border">
+                  <div className="flex items-center gap-3 text-primary">
+                    <Shield className="h-5 w-5" />
+                    <div className="flex flex-col">
+                      <span className="text-xs font-bold uppercase tracking-tight">{t("permissions.lockChat")}</span>
+                      <span className="text-[10px] opacity-60 font-medium">{t("permissions.admin")}</span>
+                    </div>
+                  </div>
+                  <Switch 
+                    checked={isChatLocked}
+                    onCheckedChange={handleToggleChatLock}
+                    className="data-[state=checked]:bg-primary"
+                  />
+                </div>
+              </div>
+            )}
+            {members?.map((m: any) => (
+              <div key={m.user.id} className="flex flex-col gap-1 rounded-2xl p-2 hover:bg-muted/50 transition-colors">
+                <div className="flex items-center gap-3">
+                  <div className="relative">
+                    <Avatar className="h-10 w-10 ring-1 ring-border/50">
+                      <AvatarImage src={m.user.avatar_url ?? undefined} />
+                      <AvatarFallback className="bg-gradient-mint text-sm">
+                        {m.user.display_name[0]?.toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className={cn(
+                      "absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-card",
+                      m.user.status === 'online' ? "bg-green-500" : "bg-gray-400"
+                    )} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-bold truncate">{m.user.display_name}</p>
+                      {m.user.id === ownerId ? (
+                         <span className="text-[9px] font-black uppercase tracking-tighter bg-amber-500/10 text-amber-500 px-1.5 py-0.5 rounded-full ring-1 ring-amber-500/20">{t("permissions.owner")}</span>
+                      ) : m.role === 'admin' ? (
+                        <span className="text-[9px] font-black uppercase tracking-tighter bg-primary/10 text-primary px-1.5 py-0.5 rounded-full">{t("permissions.admin")}</span>
+                      ) : (
+                        <span className="text-[9px] font-bold uppercase tracking-tighter bg-muted text-muted-foreground px-1.5 py-0.5 rounded-full opacity-60">{t("permissions.member")}</span>
+                      )}
+                    </div>
+                    <p className="text-[10px] text-muted-foreground truncate italic">{m.user.bio || ""}</p>
+                  </div>
+                </div>
+                
+                {/* Owner actions (Promote/Demote) */}
+                {isOwner && m.user.id !== currentUserId && (
+                  <div className="mt-1 flex gap-1 px-1">
+                    {m.role === 'admin' ? (
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        className="h-7 text-[10px] font-bold text-muted-foreground hover:text-destructive hover:bg-destructive/5 rounded-xl flex-1 justify-start gap-2"
+                        onClick={() => handleChangeRole(m.user.id, 'member')}
+                      >
+                        <Shield className="h-3 w-3" />
+                        {t("permissions.demote")}
+                      </Button>
+                    ) : (
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        className="h-7 text-[10px] font-bold text-primary hover:bg-primary/5 rounded-xl flex-1 justify-start gap-2"
+                        onClick={() => handleChangeRole(m.user.id, 'admin')}
+                      >
+                        <ShieldCheck className="h-3 w-3" />
+                        {t("permissions.promote")}
+                      </Button>
+                    )}
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="h-7 text-[10px] font-bold text-amber-500 hover:bg-amber-500/5 rounded-xl flex-1 justify-start gap-2"
+                      onClick={() => handleTransferOwnership(m.user.id)}
+                    >
+                      <ShieldAlert className="h-3 w-3" />
+                      {t("group.transfer")}
+                    </Button>
+                  </div>
+                )}
+                
+                {/* Permissions section for admins */}
+                {isAdmin && m.user.id !== currentUserId && (
+                  <div className="mt-2 flex items-center justify-between gap-4 rounded-xl bg-muted/50 p-2.5 border border-border/50">
+                    <div className="flex items-center gap-4">
+                      <label className="flex flex-col items-center gap-1.5 cursor-pointer group/perm">
+                        <span className="text-[10px] font-bold text-muted-foreground uppercase group-hover/perm:text-primary transition-colors">{t("permissions.chat")}</span>
+                        <Switch 
+                          checked={m.can_message !== false}
+                          onCheckedChange={(val) => handleTogglePermission(m.user.id, 'can_message', val)}
+                          onClick={(e) => e.stopPropagation()}
+                          onPointerDown={(e) => e.stopPropagation()}
+                          className="data-[state=checked]:bg-green-500"
+                        />
+                      </label>
+                      <div className="w-px h-8 bg-border/50" />
+                      <label className="flex flex-col items-center gap-1.5 cursor-pointer group/perm">
+                        <span className="text-[10px] font-bold text-muted-foreground uppercase group-hover/perm:text-primary transition-colors">{t("permissions.call")}</span>
+                        <Switch 
+                          checked={m.can_call !== false}
+                          onCheckedChange={(val) => handleTogglePermission(m.user.id, 'can_call', val)}
+                          onClick={(e) => e.stopPropagation()}
+                          onPointerDown={(e) => e.stopPropagation()}
+                          className="data-[state=checked]:bg-blue-500"
+                        />
+                      </label>
+                    </div>
+                    <div className="text-[10px] font-bold text-muted-foreground/50 uppercase tracking-widest vertical-text">{t("permissions.label")}</div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  if (isMobile) {
+    return (
+      <Drawer open={open} onOpenChange={setOpen}>
+        <DrawerTrigger asChild>
+          <Button variant="ghost" size="icon" className="rounded-xl h-9 w-9 text-muted-foreground hover:text-primary">
+            <Users className="h-5 w-5" />
+          </Button>
+        </DrawerTrigger>
+        <DrawerContent className="px-0 pb-6 border-none rounded-t-[32px]">
+          <DrawerHeader className="hidden">
+            <DrawerTitle>{t("permissions.title")}</DrawerTitle>
+          </DrawerHeader>
+          {Content}
+        </DrawerContent>
+      </Drawer>
+    );
+  }
+
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
@@ -828,80 +1173,7 @@ function GroupMembersSheet({ groupId, currentUserId, isAdmin }: { groupId: strin
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-80 p-0 rounded-3xl overflow-hidden shadow-2xl border-none" align="end" sideOffset={10}>
-        <div className="bg-gradient-primary p-4 text-primary-foreground">
-          <h3 className="font-display text-lg font-bold flex items-center gap-2">
-            <Users className="h-5 w-5" />
-            {t("permissions.title")}
-          </h3>
-          <p className="text-xs opacity-80">{members?.length ?? 0} {t("permissions.membersCount")}</p>
-        </div>
-        <div className="max-h-[450px] overflow-y-auto p-2 bg-card scrollbar-thin">
-          {isLoading ? (
-            <div className="flex h-32 items-center justify-center">
-              <Loader2 className="h-6 w-6 animate-spin text-primary opacity-50" />
-            </div>
-          ) : (
-            <div className="space-y-1">
-              {members?.map((m: any) => (
-                <div key={m.user.id} className="flex flex-col gap-1 rounded-2xl p-2 hover:bg-muted/50 transition-colors">
-                  <div className="flex items-center gap-3">
-                    <div className="relative">
-                      <Avatar className="h-10 w-10 ring-1 ring-border/50">
-                        <AvatarImage src={m.user.avatar_url ?? undefined} />
-                        <AvatarFallback className="bg-gradient-mint text-sm">
-                          {m.user.display_name[0]?.toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className={cn(
-                        "absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-card",
-                        m.user.status === 'online' ? "bg-green-500" : "bg-gray-400"
-                      )} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <p className="text-sm font-bold truncate">{m.user.display_name}</p>
-                        {m.role === 'admin' && (
-                          <span className="text-[9px] font-black uppercase tracking-tighter bg-primary/10 text-primary px-1.5 py-0.5 rounded-full">{t("permissions.admin")}</span>
-                        )}
-                      </div>
-                      <p className="text-[10px] text-muted-foreground truncate italic">{m.user.bio || ""}</p>
-                    </div>
-                  </div>
-                  
-                  {/* Permissions section for admins */}
-                  {isAdmin && m.user.id !== currentUserId && (
-                    <div className="mt-2 flex items-center justify-between gap-4 rounded-xl bg-muted/50 p-2.5 border border-border/50">
-                      <div className="flex items-center gap-4">
-                        <label className="flex flex-col items-center gap-1.5 cursor-pointer group/perm">
-                          <span className="text-[10px] font-bold text-muted-foreground uppercase group-hover/perm:text-primary transition-colors">{t("permissions.chat")}</span>
-                          <Switch 
-                            checked={m.can_message !== false}
-                            onCheckedChange={(val) => handleTogglePermission(m.user.id, 'can_message', val)}
-                            onClick={(e) => e.stopPropagation()}
-                            onPointerDown={(e) => e.stopPropagation()}
-                            className="data-[state=checked]:bg-green-500"
-                          />
-                        </label>
-                        <div className="w-px h-8 bg-border/50" />
-                        <label className="flex flex-col items-center gap-1.5 cursor-pointer group/perm">
-                          <span className="text-[10px] font-bold text-muted-foreground uppercase group-hover/perm:text-primary transition-colors">{t("permissions.call")}</span>
-                          <Switch 
-                            checked={m.can_call !== false}
-                            onCheckedChange={(val) => handleTogglePermission(m.user.id, 'can_call', val)}
-                            onClick={(e) => e.stopPropagation()}
-                            onPointerDown={(e) => e.stopPropagation()}
-                            className="data-[state=checked]:bg-blue-500"
-                          />
-                        </label>
-                      </div>
-                      <div className="text-[10px] font-bold text-muted-foreground/50 uppercase tracking-widest vertical-text">{t("permissions.label")}</div>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        {Content}
       </PopoverContent>
     </Popover>
   );
