@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useParams, useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Send, Loader2, Phone, Video, Paperclip, Smile, MoreHorizontal, Trash2, Reply, X, Menu } from "lucide-react";
+import { ArrowLeft, Send, Loader2, Phone, Video, Paperclip, Smile, MoreHorizontal, Trash2, Reply, X, Menu, Mic } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -19,6 +19,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { generateRoomId } from "@/lib/zego";
 import { useI18n } from "@/lib/i18n";
 import { useSidebar } from "@/hooks/use-sidebar";
+import { VoiceRecorder } from "@/components/chat/VoiceRecorder";
+import { CustomAudioPlayer } from "@/components/chat/CustomAudioPlayer";
 
 interface OtherUserProfile {
   id: string;
@@ -46,6 +48,7 @@ export function DMChat() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isFirstLoad = useRef(true);
+  const [showVoiceRecorder, setShowVoiceRecorder] = useState(false);
 
   const qc = useQueryClient();
   const { 
@@ -175,6 +178,50 @@ export function DMChat() {
     }
   };
 
+  const handleVoiceRecording = async (blob: Blob) => {
+    if (!user || !conversationId) return;
+    setSending(true);
+
+    // Force simple MIME type so Supabase serves correct Content-Type for playback
+    const file = new File([blob], `voice-message-${Date.now()}.webm`, { type: "audio/webm" });
+    
+    const result = await uploadFile(file, user.id, (progress) => {
+      if (progress.status === "error") {
+        toast.error(progress.error || "Upload failed");
+      }
+    });
+
+    if (!result) {
+      setSending(false);
+      return;
+    }
+
+    try {
+      const msg = await sendMessage.mutateAsync({
+        content: null,
+        type: "file",
+        reply_to: replyTo?.id
+      });
+      setReplyTo(null);
+
+      if (msg) {
+        await supabase.from("direct_attachments").insert({
+          message_id: msg.id,
+          url: result.publicUrl,
+          file_name: result.filename,
+          mime_type: result.mimeType,
+          size_bytes: result.sizeBytes,
+        });
+      }
+      toast.success(t("common.success"));
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setSending(false);
+      setShowVoiceRecorder(false);
+    }
+  };
+
   const handleDeleteMessage = async (msgId: string) => {
     const msg = messagesById[msgId];
     if (!msg || !user) return;
@@ -275,6 +322,28 @@ export function DMChat() {
           >
             {conversationId ? <Video className="h-5 w-5" /> : <Loader2 className="h-4 w-4 animate-spin opacity-50" />}
           </Button>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="rounded-xl h-9 w-9 text-muted-foreground hover:text-primary shrink-0">
+                <Menu className="h-5 w-5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuItem 
+                onClick={async () => {
+                  if (!conversationId || !confirm(t("chat.deleteConfirm"))) return;
+                  const { error } = await supabase.from("direct_conversations").delete().eq("id", conversationId);
+                  if (error) toast.error(error.message);
+                  else navigate({ to: "/app" });
+                }}
+                className="text-destructive focus:text-destructive"
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                {t("chat.delete")}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
@@ -304,156 +373,24 @@ export function DMChat() {
               </div>
             )}
 
-            {messages.map((msg, idx) => {
-              const isOwn = msg.sender_id === user?.id;
-              const prevMsg = messages[idx - 1];
-              const isSameSender = prevMsg?.sender_id === msg.sender_id;
-
-              return (
-                <div key={msg.id} className={cn("group flex flex-col", isOwn ? "items-end" : "items-start", isSameSender ? "mt-1" : "mt-4")}>
-                  <div className={cn("flex items-end gap-2 max-w-[85%]", isOwn && "flex-row-reverse")}>
-                    {!isOwn && !isSameSender && (
-                      <Avatar className="h-8 w-8 shrink-0 mb-1">
-                        <AvatarImage src={msg.sender.avatar_url ?? undefined} />
-                        <AvatarFallback className="bg-gradient-primary text-white text-xs">
-                          {msg.sender.display_name[0]?.toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-                    )}
-                    {!isOwn && isSameSender && <div className="w-8 shrink-0" />}
-
-                    <div className="flex flex-col">
-                      <div className={cn("flex items-center gap-1", isOwn ? "flex-row-reverse" : "flex-row")}>
-                        <div
-                          className={cn(
-                            "relative rounded-2xl px-4 py-2.5 text-sm shadow-sm transition-all hover:shadow-md",
-                            isOwn
-                              ? "bg-gradient-primary text-white rounded-tr-sm"
-                              : "bg-card border border-border/50 text-card-foreground rounded-tl-sm"
-                          )}
-                        >
-                          {msg.reply_to && messagesById[msg.reply_to] && (
-                            <div className={cn(
-                              "mb-2 rounded-lg border-l-2 px-2 py-1 text-xs",
-                              isOwn ? "border-white/60 bg-white/10" : "border-primary bg-muted/60"
-                            )}>
-                              <div className="font-bold opacity-80">
-                                {messagesById[msg.reply_to].type === "image" ? t("chat.image") : 
-                                 messagesById[msg.reply_to].type === "video" ? t("chat.video") : 
-                                 messagesById[msg.reply_to].type === "file" ? t("chat.file") : 
-                                 messagesById[msg.reply_to].sender.display_name}
-                              </div>
-                              <div className="truncate opacity-70 italic text-[11px]">
-                                {messagesById[msg.reply_to].type === "text" ? messagesById[msg.reply_to].content : ""}
-                              </div>
-                            </div>
-                          )}
-                          <MessageContent
-                            message={msg}
-                            isOwn={isOwn}
-                            onJoinCall={(isVideo) => {
-                              setCallConfig({ isVideo, messageId: msg.id, isGroup: false });
-                            }}
-                          />
-                        </div>
-
-                        <div className={cn(
-                          "flex items-center gap-0.5 rounded-full border bg-card p-0.5 shadow-sm transition-opacity duration-200",
-                          openMenuId === msg.id ? "opacity-100" : "opacity-0 group-hover:opacity-100"
-                        )}>
-                          <Popover>
-                            <PopoverTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7 rounded-full text-muted-foreground hover:text-primary"
-                              >
-                                <Smile className="h-3.5 w-3.5" />
-                              </Button>
-                            </PopoverTrigger>
-                            <PopoverContent side="top" align="center" className="w-fit p-2 rounded-2xl shadow-xl border-primary/10">
-                              <div className="flex flex-wrap gap-1 max-w-[200px]">
-                                {QUICK_EMOJIS.map((emoji) => (
-                                  <button
-                                    key={emoji}
-                                    className="hover:scale-125 transition-transform p-1 text-lg"
-                                    onClick={() => toggleReaction.mutate({ messageId: msg.id, emoji })}
-                                  >
-                                    {emoji}
-                                  </button>
-                                ))}
-                              </div>
-                            </PopoverContent>
-                          </Popover>
-
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 rounded-full text-muted-foreground hover:text-primary"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleReply(msg);
-                            }}
-                          >
-                            <Reply className="h-3.5 w-3.5" />
-                          </Button>
-                          <DropdownMenu onOpenChange={(open) => setOpenMenuId(open ? msg.id : null)}>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7 rounded-full text-muted-foreground hover:text-primary"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <MoreHorizontal className="h-3.5 w-3.5" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align={isOwn ? "end" : "start"} className="z-[100]">
-                              <DropdownMenuItem
-                                className="text-destructive focus:text-destructive"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleDeleteMessage(msg.id);
-                                }}
-                              >
-                                <Trash2 className="mr-2 h-4 w-4" />
-                                {t("chat.delete")}
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
-                      </div>
-
-                      {/* Reactions display */}
-                      {reactionsByMsg[msg.id] && (
-                        <div className={cn("flex flex-wrap gap-1 mt-1", isOwn ? "justify-end" : "justify-start")}>
-                          {reactionsByMsg[msg.id].map((r) => (
-                            <button
-                              key={r.emoji}
-                              onClick={() => toggleReaction.mutate({ messageId: msg.id, emoji: r.emoji })}
-                              className={cn(
-                                "flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium transition-all",
-                                r.mine 
-                                  ? "bg-primary/20 text-primary border border-primary/20 ring-1 ring-primary/20" 
-                                  : "bg-muted border border-border/50 text-muted-foreground hover:bg-muted/80"
-                              )}
-                            >
-                              <span>{r.emoji}</span>
-                              {r.count > 1 && <span>{r.count}</span>}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                      {!isSameSender && (
-                        <p className={cn("mt-1 text-[10px] font-medium opacity-50 px-1", isOwn ? "text-right" : "text-left")}>
-                          {new Date(msg.created_at).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+            {messages.map((msg, idx) => (
+              <DMMessageBubble
+                key={msg.id}
+                msg={msg}
+                idx={idx}
+                messages={messages}
+                user={user}
+                t={t}
+                messagesById={messagesById}
+                reactionsByMsg={reactionsByMsg}
+                openMenuId={openMenuId}
+                setOpenMenuId={setOpenMenuId}
+                toggleReaction={toggleReaction}
+                handleReply={handleReply}
+                handleDeleteMessage={handleDeleteMessage}
+                setCallConfig={setCallConfig}
+              />
+            ))}
           </div>
         )}
       </div>
@@ -468,6 +405,7 @@ export function DMChat() {
               <span className="text-xs text-muted-foreground truncate italic">
                 {replyTo.type === "image" ? `[${t("chat.image")}]` : 
                  replyTo.type === "video" ? `[${t("chat.video")}]` : 
+                 replyTo.type === "audio" ? `[${t("chat.audio")}]` : 
                  replyTo.type === "file" ? `[${t("chat.file")}]` : 
                  replyTo.content}
               </span>
@@ -499,24 +437,50 @@ export function DMChat() {
             theme={theme === "dark" ? "dark" : "light"}
           />
 
-          <Textarea
-            className="min-h-[42px] max-h-32 flex-1 resize-none rounded-2xl text-sm border-none bg-muted/50 focus-visible:ring-1 focus-visible:ring-primary/20 transition-all"
-            placeholder={`${t("dm.start")} ${otherUser?.display_name ?? ""}...`}
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            onKeyDown={handleKeyDown}
-            rows={1}
-            disabled={sending}
-          />
+          {showVoiceRecorder ? (
+            <div className="flex-1 min-h-[42px] flex items-center">
+              <VoiceRecorder
+                onRecordingComplete={handleVoiceRecording}
+                onCancel={() => setShowVoiceRecorder(false)}
+                isUploading={sending}
+              />
+            </div>
+          ) : (
+            <>
+              <Textarea
+                className="min-h-[42px] max-h-32 flex-1 resize-none rounded-2xl text-sm border-none bg-muted/50 focus-visible:ring-1 focus-visible:ring-primary/20 transition-all"
+                placeholder={`${t("dm.start")} ${otherUser?.display_name ?? ""}...`}
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                onKeyDown={handleKeyDown}
+                rows={1}
+                disabled={sending}
+              />
 
-          <Button
-            size="icon"
-            className="rounded-full h-10 w-10 bg-gradient-primary shrink-0 shadow-lg shadow-primary/20 hover:scale-105 active:scale-95 transition-all"
-            onClick={handleSend}
-            disabled={(!message.trim() && !sending) || sendMessage.isPending || sending}
-          >
-            {sendMessage.isPending || sending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
-          </Button>
+              {!message.trim() && (
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="rounded-xl h-10 w-10 text-muted-foreground shrink-0"
+                  onClick={() => setShowVoiceRecorder(true)}
+                  disabled={sending}
+                >
+                  <Mic className="h-5 w-5" />
+                </Button>
+              )}
+            </>
+          )}
+
+          {message.trim() && (
+            <Button
+              size="icon"
+              className="rounded-full h-10 w-10 bg-gradient-primary shrink-0 shadow-lg shadow-primary/20 hover:scale-105 active:scale-95 transition-all"
+              onClick={handleSend}
+              disabled={(!message.trim() && !sending) || sendMessage.isPending || sending}
+            >
+              {sendMessage.isPending || sending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -535,17 +499,178 @@ export function DMChat() {
   );
 }
 
-function MessageContent({ message, isOwn, onJoinCall }: { message: any, isOwn: boolean, onJoinCall?: (isVideo: boolean) => void }) {
+function DMMessageBubble({
+  msg, idx, messages, user, t, messagesById, reactionsByMsg, openMenuId, setOpenMenuId, toggleReaction, handleReply, handleDeleteMessage, setCallConfig
+}: any) {
+  const isOwn = msg.sender_id === user?.id;
+  const prevMsg = messages[idx - 1];
+  const isSameSender = prevMsg?.sender_id === msg.sender_id;
   const [attachment, setAttachment] = useState<any>(null);
-  const { t } = useI18n();
 
   useEffect(() => {
-    if (message.type !== "text") {
-      supabase.from("direct_attachments").select("*").eq("message_id", message.id).maybeSingle().then(({ data }) => {
+    if (msg.type !== "text") {
+      supabase.from("direct_attachments").select("*").eq("message_id", msg.id).maybeSingle().then(({ data }) => {
         if (data) setAttachment(data);
       });
     }
-  }, [message.id, message.type]);
+  }, [msg.id, msg.type]);
+
+  const isVoiceMessage = msg.type === "file" && attachment?.file_name?.startsWith("voice-message");
+
+  return (
+    <div className={cn("group flex flex-col", isOwn ? "items-end" : "items-start", isSameSender ? "mt-1" : "mt-4")}>
+      <div className={cn("flex items-end gap-2 max-w-[85%]", isOwn && "flex-row-reverse")}>
+        {!isOwn && !isSameSender && (
+          <Avatar className="h-8 w-8 shrink-0 mb-1">
+            <AvatarImage src={msg.sender.avatar_url ?? undefined} />
+            <AvatarFallback className="bg-gradient-primary text-white text-xs">
+              {msg.sender.display_name[0]?.toUpperCase()}
+            </AvatarFallback>
+          </Avatar>
+        )}
+        {!isOwn && isSameSender && <div className="w-8 shrink-0" />}
+
+        <div className="flex flex-col">
+          <div className={cn("flex items-center gap-1", isOwn ? "flex-row-reverse" : "flex-row")}>
+            <div
+              className={cn(
+                "relative rounded-2xl px-4 py-2.5 text-sm shadow-sm transition-all hover:shadow-md",
+                isOwn
+                  ? isVoiceMessage
+                    ? "bg-[#E3F2FD] text-[#0D47A1] rounded-tr-sm dark:bg-[#1E3A8A]/40 dark:text-blue-100"
+                    : "bg-gradient-primary text-white rounded-tr-sm"
+                  : isVoiceMessage
+                    ? "bg-[#E3F2FD] text-[#0D47A1] rounded-tl-sm dark:bg-[#1E3A8A]/40 dark:text-blue-100"
+                    : "bg-card border border-border/50 text-card-foreground rounded-tl-sm"
+              )}
+            >
+              {msg.reply_to && messagesById[msg.reply_to] && (
+                <div className={cn(
+                  "mb-2 rounded-lg border-l-2 px-2 py-1 text-xs",
+                  isOwn ? "border-white/60 bg-white/10" : "border-primary bg-muted/60"
+                )}>
+                  <div className="font-bold opacity-80">
+                    {messagesById[msg.reply_to].type === "image" ? t("chat.image") : 
+                     messagesById[msg.reply_to].type === "video" ? t("chat.video") : 
+                     messagesById[msg.reply_to].type === "audio" ? t("chat.audio") : 
+                     messagesById[msg.reply_to].type === "file" ? t("chat.file") : 
+                     messagesById[msg.reply_to].sender.display_name}
+                  </div>
+                  <div className="truncate opacity-70 italic text-[11px]">
+                    {messagesById[msg.reply_to].type === "text" ? messagesById[msg.reply_to].content : ""}
+                  </div>
+                </div>
+              )}
+              <MessageContent
+                message={msg}
+                attachment={attachment}
+                isOwn={isOwn}
+                onJoinCall={(isVideo) => {
+                  setCallConfig({ isVideo, messageId: msg.id, isGroup: false });
+                }}
+              />
+            </div>
+
+            <div className={cn(
+              "flex items-center gap-0.5 rounded-full border bg-card p-0.5 shadow-sm transition-opacity duration-200",
+              openMenuId === msg.id ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+            )}>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 rounded-full text-muted-foreground hover:text-primary"
+                  >
+                    <Smile className="h-3.5 w-3.5" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent side="top" align="center" className="w-fit p-2 rounded-2xl shadow-xl border-primary/10">
+                  <div className="flex flex-wrap gap-1 max-w-[200px]">
+                    {QUICK_EMOJIS.map((emoji) => (
+                      <button
+                        key={emoji}
+                        className="hover:scale-125 transition-transform p-1 text-lg"
+                        onClick={() => toggleReaction.mutate({ messageId: msg.id, emoji })}
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+                  </div>
+                </PopoverContent>
+              </Popover>
+
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 rounded-full text-muted-foreground hover:text-primary"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleReply(msg);
+                }}
+              >
+                <Reply className="h-3.5 w-3.5" />
+              </Button>
+              <DropdownMenu onOpenChange={(open) => setOpenMenuId(open ? msg.id : null)}>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 rounded-full text-muted-foreground hover:text-primary"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <MoreHorizontal className="h-3.5 w-3.5" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align={isOwn ? "end" : "start"} className="z-[100]">
+                  <DropdownMenuItem
+                    className="text-destructive focus:text-destructive"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteMessage(msg.id);
+                    }}
+                  >
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    {t("chat.delete")}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </div>
+
+          {/* Reactions display */}
+          {reactionsByMsg[msg.id] && (
+            <div className={cn("flex flex-wrap gap-1 mt-1", isOwn ? "justify-end" : "justify-start")}>
+              {reactionsByMsg[msg.id].map((r: any) => (
+                <button
+                  key={r.emoji}
+                  onClick={() => toggleReaction.mutate({ messageId: msg.id, emoji: r.emoji })}
+                  className={cn(
+                    "flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium transition-all",
+                    r.mine 
+                      ? "bg-primary/20 text-primary border border-primary/20 ring-1 ring-primary/20" 
+                      : "bg-muted border border-border/50 text-muted-foreground hover:bg-muted/80"
+                  )}
+                >
+                  <span>{r.emoji}</span>
+                  {r.count > 1 && <span>{r.count}</span>}
+                </button>
+              ))}
+            </div>
+          )}
+          {!isSameSender && (
+            <p className={cn("mt-1 text-[10px] font-medium opacity-50 px-1", isOwn ? "text-right" : "text-left")}>
+              {new Date(msg.created_at).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MessageContent({ message, attachment, isOwn, onJoinCall }: { message: any, attachment: any, isOwn: boolean, onJoinCall?: (isVideo: boolean) => void }) {
+  const { t } = useI18n();
 
   if (message.type === "system" && message.content?.startsWith("CALL_ENDED:")) {
     const isVideo = message.content.includes("video");
@@ -616,7 +741,28 @@ function MessageContent({ message, isOwn, onJoinCall }: { message: any, isOwn: b
     );
   }
 
+  if (message.type === "file" && !attachment) {
+    return (
+      <div className="flex items-center gap-2 py-2 px-1">
+        <Loader2 className="h-4 w-4 animate-spin opacity-50" />
+        <span className="text-xs opacity-50 italic">Đang tải...</span>
+      </div>
+    );
+  }
+
   if (message.type === "file" && attachment) {
+    const isAudio = attachment.mime_type?.startsWith("audio/") || 
+                    attachment.file_name?.startsWith("voice-message") ||
+                    attachment.file_name?.endsWith(".webm") ||
+                    attachment.file_name?.endsWith(".ogg") ||
+                    attachment.file_name?.endsWith(".mp3");
+    if (isAudio) {
+      return (
+        <div className="py-1">
+          <CustomAudioPlayer src={attachment.url} isMine={isOwn} />
+        </div>
+      );
+    }
     return (
       <a href={attachment.url} target="_blank" rel="noreferrer" className={cn("flex items-center gap-2 p-1 font-medium underline underline-offset-4 decoration-2", isOwn ? "text-white decoration-white/30" : "text-primary decoration-primary/30")}>
         <Paperclip className="h-4 w-4" />

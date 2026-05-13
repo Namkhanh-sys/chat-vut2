@@ -114,6 +114,11 @@ export function CallInterface({ roomId, userId, userName, isVideo, onClose, mess
         showMyCameraToggleButton: isVideo,
         showMyMicrophoneToggleButton: true,
         showAudioVideoSettingsButton: true,
+        showTextChat: true,
+        showUserList: true,
+        maxUsers: isGroup ? 50 : 2,
+        layout: isGroup ? "Grid" : "Auto",
+        showLayoutButton: isGroup,
         useFrontFacingCamera: true,
         onJoinRoom: () => {
           setIsLoading(false);

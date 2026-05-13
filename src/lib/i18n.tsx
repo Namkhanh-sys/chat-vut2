@@ -47,6 +47,7 @@ const dict = {
     "sidebar.groups": "Nhóm",
     "sidebar.findFriends": "Tìm bạn bè",
     "sidebar.changeAvatar": "Thay đổi ảnh đại diện",
+    "sidebar.changeName": "Thay đổi tên hiển thị",
 
     "group.create": "Tạo nhóm",
     "group.name": "Tên nhóm",
@@ -60,6 +61,7 @@ const dict = {
     "group.deleteConfirm": "Hành động này không thể hoàn tác. Toàn bộ tin nhắn sẽ bị xóa vĩnh viễn.",
     "group.leaveConfirm": "Bạn có chắc muốn rời nhóm?",
     "group.changeAvatar": "Đổi ảnh nhóm",
+    "group.changeName": "Đổi tên nhóm",
 
     "chat.placeholder": "Nhắn gì đó vui vẻ...",
     "chat.send": "Gửi",
@@ -81,6 +83,7 @@ const dict = {
     "chat.image": "Ảnh",
     "chat.video": "Video",
     "chat.file": "Tệp",
+    "chat.audio": "Ghi âm",
 
     "friends.search": "Tìm người dùng...",
     "friends.empty": "Chưa có bạn bè nào",
@@ -175,6 +178,7 @@ const dict = {
     "sidebar.groups": "Groups",
     "sidebar.findFriends": "Find friends",
     "sidebar.changeAvatar": "Change avatar",
+    "sidebar.changeName": "Change display name",
 
     "group.create": "Create group",
     "group.name": "Group name",
@@ -188,6 +192,7 @@ const dict = {
     "group.deleteConfirm": "This action cannot be undone. All messages and data will be permanently deleted.",
     "group.leaveConfirm": "Are you sure you want to leave the group?",
     "group.changeAvatar": "Change group avatar",
+    "group.changeName": "Change group name",
 
     "chat.placeholder": "Say something fun...",
     "chat.send": "Send",
@@ -209,6 +214,7 @@ const dict = {
     "chat.image": "Image",
     "chat.video": "Video",
     "chat.file": "File",
+    "chat.audio": "Voice message",
 
     "friends.search": "Search users...",
     "friends.empty": "No friends yet",

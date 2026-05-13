@@ -16,7 +16,7 @@ export interface DirectMessage {
     display_name: string;
     avatar_url: string | null;
   };
-  type: "text" | "image" | "file" | "video" | "system";
+  type: "text" | "image" | "file" | "video" | "system" | "audio";
   reply_to?: string;
 }
 

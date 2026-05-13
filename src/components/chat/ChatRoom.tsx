@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient, useInfiniteQuery } from "@tanstack/react-query";
-import { Send, Paperclip, X, Reply, MoreHorizontal, Pencil, Trash2, Users, Loader2, Smile, Menu, ShieldAlert, ShieldCheck, Shield, Phone, Video, MessageSquare, PhoneCall, UserMinus, UserPlus, Search } from "lucide-react";
+import { Send, Paperclip, X, Reply, MoreHorizontal, Pencil, Trash2, Users, Loader2, Smile, Menu, ShieldAlert, ShieldCheck, Shield, Phone, Video, MessageSquare, PhoneCall, UserMinus, UserPlus, Search, Mic } from "lucide-react";
 import { format, isToday, isYesterday } from "date-fns";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -26,13 +26,16 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerTrigger } from "@/components/ui/drawer";
 import { InviteMembersDialog } from "./InviteMembersDialog";
 import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { VoiceRecorder } from "./VoiceRecorder";
+import { CustomAudioPlayer } from "./CustomAudioPlayer";
 
 interface Message {
   id: string;
   group_id: string;
   sender_id: string;
   content: string | null;
-  type: "text" | "image" | "file" | "system" | "video";
+  type: "text" | "image" | "file" | "system" | "video" | "audio";
   reply_to: string | null;
   is_edited: boolean;
   is_pinned: boolean;
@@ -70,6 +73,10 @@ export function ChatRoom({ groupId }: { groupId: string }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const groupAvatarInputRef = useRef<HTMLInputElement>(null);
+  const [showVoiceRecorder, setShowVoiceRecorder] = useState(false);
+  const [openGroupNameEdit, setOpenGroupNameEdit] = useState(false);
+  const [newGroupName, setNewGroupName] = useState("");
+  const [isUpdatingGroupName, setIsUpdatingGroupName] = useState(false);
 
   // Group info
   const { data: group } = useQuery({
@@ -350,6 +357,79 @@ export function ChatRoom({ groupId }: { groupId: string }) {
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
+  const handleVoiceRecording = async (blob: Blob) => {
+    if (!user) return;
+    setSending(true);
+
+    // Force simple MIME type so Supabase serves correct Content-Type for playback
+    const file = new File([blob], `voice-message-${Date.now()}.webm`, { type: "audio/webm" });
+    
+    const result = await uploadFile(file, user.id, (progress) => {
+      if (progress.status === "error") {
+        toast.error(progress.error || "Upload failed");
+      }
+    });
+
+    if (!result) {
+      setSending(false);
+      return;
+    }
+
+    const { data: msg, error: msgErr } = await supabase
+      .from("messages")
+      .insert({
+        group_id: groupId,
+        sender_id: user.id,
+        content: null,
+        type: "file",
+      })
+      .select()
+      .single();
+
+    if (msgErr || !msg) {
+      toast.error(msgErr?.message ?? t("common.error"));
+      setSending(false);
+      return;
+    }
+
+    const { error: attachErr } = await supabase.from("attachments").insert({
+      message_id: msg.id,
+      url: result.publicUrl,
+      file_name: result.filename,
+      mime_type: result.mimeType,
+      size_bytes: result.sizeBytes,
+    });
+
+    if (attachErr) {
+      toast.error(t("common.error"));
+    } else {
+      toast.success(t("common.success"));
+    }
+
+    setSending(false);
+    setShowVoiceRecorder(false);
+  };
+
+  const handleUpdateGroupName = async () => {
+    if (!newGroupName.trim() || !groupId) return;
+    try {
+      setIsUpdatingGroupName(true);
+      const { error } = await supabase
+        .from("groups")
+        .update({ name: newGroupName.trim() } as any)
+        .eq("id", groupId);
+      if (error) throw error;
+      toast.success(t("common.success"));
+      qc.invalidateQueries({ queryKey: ["group", groupId] });
+      qc.invalidateQueries({ queryKey: ["groups"] });
+      setOpenGroupNameEdit(false);
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setIsUpdatingGroupName(false);
+    }
+  };
+
   const handleGroupAvatar = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !user || !group) return;
@@ -431,7 +511,7 @@ export function ChatRoom({ groupId }: { groupId: string }) {
         <Button
           variant="ghost"
           size="icon"
-          className="h-9 w-9 shrink-0"
+          className="h-9 w-9 shrink-0 md:hidden"
           onClick={toggle}
         >
           <Menu className="h-5 w-5" />
@@ -532,7 +612,7 @@ export function ChatRoom({ groupId }: { groupId: string }) {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="rounded-xl h-9 w-9 text-muted-foreground hover:text-primary shrink-0">
-                <MoreHorizontal className="h-5 w-5" />
+                <Menu className="h-5 w-5" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
@@ -541,10 +621,16 @@ export function ChatRoom({ groupId }: { groupId: string }) {
                 {t("group.leave")}
               </DropdownMenuItem>
               {isOwner && (
-                <DropdownMenuItem onClick={handleDeleteGroup} className="text-destructive focus:text-destructive font-bold">
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  {t("group.delete")}
-                </DropdownMenuItem>
+                <>
+                  <DropdownMenuItem onClick={() => { setNewGroupName(group?.name || ""); setOpenGroupNameEdit(true); }}>
+                    <Pencil className="mr-2 h-4 w-4" />
+                    {t("group.changeName")}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleDeleteGroup} className="text-destructive focus:text-destructive font-bold">
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    {t("group.delete")}
+                  </DropdownMenuItem>
+                </>
               )}
             </DropdownMenuContent>
           </DropdownMenu>
@@ -631,9 +717,11 @@ export function ChatRoom({ groupId }: { groupId: string }) {
                           ? `[${t("chat.image") || "Image"}]`
                           : replyTo?.type === "video"
                             ? `[${t("chat.video") || "Video"}]`
-                            : replyTo?.type === "file"
-                              ? `[${t("chat.file") || "File"}]`
-                              : replyTo?.content) ?? ""}
+                            : replyTo?.type === "audio"
+                              ? `[${t("chat.audio") || "Voice message"}]`
+                              : replyTo?.type === "file"
+                                ? `[${t("chat.file") || "File"}]`
+                                : replyTo?.content) ?? ""}
               </div>
             </div>
             <Button size="icon" variant="ghost" onClick={() => { setReplyTo(null); setEditingId(null); setText(""); }}>
@@ -651,8 +739,8 @@ export function ChatRoom({ groupId }: { groupId: string }) {
       }))} />
 
       {/* Input */}
-      <div className="border-t bg-card px-4 py-3">
-        <div className="mx-auto flex max-w-3xl items-end gap-2">
+      <div className="p-4 border-t bg-card/30 backdrop-blur-sm">
+        <div className="mx-auto max-w-3xl flex gap-2 items-end">
           <input ref={fileInputRef} type="file" hidden onChange={handleFile} />
           <Button size="icon" variant="ghost" className="h-10 w-10 shrink-0" onClick={() => fileInputRef.current?.click()} disabled={sending}>
             <Paperclip className="h-5 w-5" />
@@ -661,44 +749,71 @@ export function ChatRoom({ groupId }: { groupId: string }) {
             onEmojiClick={(emoji) => setText((p) => p + emoji)}
             theme={theme === "dark" ? "dark" : "light"}
           />
-          <Textarea
-            value={text}
-            onChange={(e) => {
-              setText(e.target.value);
-              if (e.target.value.trim()) {
-                markAsTyping();
-              } else {
-                clearTyping();
-              }
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                if (myMembership?.can_message !== false && canChat) {
-                  handleSend();
-                  clearTyping();
+
+          {showVoiceRecorder ? (
+            <div className="flex-1 min-h-[42px] flex items-center">
+              <VoiceRecorder
+                onRecordingComplete={handleVoiceRecording}
+                onCancel={() => setShowVoiceRecorder(false)}
+                isUploading={sending}
+              />
+            </div>
+          ) : (
+            <>
+              <Textarea
+                value={text}
+                onChange={(e) => {
+                  setText(e.target.value);
+                  if (e.target.value.trim()) {
+                    markAsTyping();
+                  } else {
+                    clearTyping();
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    if (myMembership?.can_message !== false && canChat) {
+                      handleSend();
+                      clearTyping();
+                    }
+                  }
+                }}
+                placeholder={
+                  myMembership?.can_message === false 
+                    ? t("permissions.denied") 
+                    : isChatLocked && !isAdmin 
+                      ? t("permissions.lockChat") 
+                      : t("chat.placeholder")
                 }
-              }
-            }}
-            placeholder={
-              myMembership?.can_message === false 
-                ? t("permissions.denied") 
-                : isChatLocked && !isAdmin 
-                  ? t("permissions.lockChat") 
-                  : t("chat.placeholder")
-            }
-            rows={1}
-            disabled={sending || myMembership?.can_message === false || (isChatLocked && !isAdmin)}
-            className="min-h-[42px] max-h-32 flex-1 resize-none rounded-2xl border-none bg-muted/50 px-4 py-2.5 text-sm focus-visible:ring-1 focus-visible:ring-primary/20 transition-all"
-          />
-          <Button
-            size="icon"
-            className="h-10 w-10 shrink-0 rounded-full bg-gradient-primary shadow-lg shadow-primary/20 hover:scale-105 active:scale-95 transition-all"
-            onClick={handleSend}
-            disabled={(!text.trim() && !editingId) || sending || myMembership?.can_message === false || (isChatLocked && !isAdmin)}
-          >
-            {sending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
-          </Button>
+                rows={1}
+                disabled={sending || myMembership?.can_message === false || (isChatLocked && !isAdmin)}
+                className="min-h-[42px] max-h-32 flex-1 resize-none rounded-2xl border-none bg-muted/50 px-4 py-2.5 text-sm focus-visible:ring-1 focus-visible:ring-primary/20 transition-all"
+              />
+              {!text.trim() && !editingId && (
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-10 w-10 shrink-0 text-muted-foreground hover:text-primary"
+                  onClick={() => setShowVoiceRecorder(true)}
+                  disabled={sending || myMembership?.can_message === false || (isChatLocked && !isAdmin)}
+                >
+                  <Mic className="h-5 w-5" />
+                </Button>
+              )}
+            </>
+          )}
+
+          {(text.trim() || editingId) && (
+            <Button
+              size="icon"
+              className="h-10 w-10 shrink-0 rounded-full bg-gradient-primary shadow-lg shadow-primary/20 hover:scale-105 active:scale-95 transition-all"
+              onClick={handleSend}
+              disabled={(!text.trim() && !editingId) || sending || myMembership?.can_message === false || (isChatLocked && !isAdmin)}
+            >
+              {sending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -713,6 +828,33 @@ export function ChatRoom({ groupId }: { groupId: string }) {
           onClose={() => setCallConfig(null)}
         />
       )}
+
+      <Dialog open={openGroupNameEdit} onOpenChange={setOpenGroupNameEdit}>
+        <DialogContent className="sm:max-w-[425px] rounded-3xl border-none shadow-2xl">
+          <DialogHeader>
+            <DialogTitle className="font-display text-xl">{t("group.changeName")}</DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <Input
+              value={newGroupName}
+              onChange={(e) => setNewGroupName(e.target.value)}
+              placeholder={t("group.name")}
+              className="rounded-xl bg-muted/50 border-none h-11"
+              autoFocus
+              onKeyDown={(e) => e.key === "Enter" && handleUpdateGroupName()}
+            />
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="ghost" onClick={() => setOpenGroupNameEdit(false)} className="rounded-xl">
+              {t("common.cancel")}
+            </Button>
+            <Button onClick={handleUpdateGroupName} disabled={isUpdatingGroupName} className="rounded-xl bg-gradient-primary text-white shadow-soft">
+              {isUpdatingGroupName && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {t("common.save")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -737,7 +879,7 @@ function MessageBubble({
   const [attachments, setAttachments] = useState<{ url: string; file_name: string; mime_type: string | null }[]>([]);
 
   useEffect(() => {
-    if (message.type === "image" || message.type === "file" || message.type === "video") {
+    if (message.type === "image" || message.type === "file" || message.type === "video" || message.type === "audio") {
       supabase.from("attachments").select("url, file_name, mime_type").eq("message_id", message.id).then(({ data }) => {
         setAttachments(data ?? []);
       });
@@ -782,7 +924,13 @@ function MessageBubble({
           )}
           <div
             className={`relative animate-bubble-in rounded-2xl px-3.5 py-2 ${
-              isMine ? "rounded-br-md bg-gradient-primary text-primary-foreground" : "rounded-bl-md bg-muted text-foreground"
+              isMine 
+                ? message.type === "file" && attachments[0]?.file_name?.startsWith("voice-message")
+                  ? "rounded-br-md bg-[#E3F2FD] text-[#0D47A1] dark:bg-[#1E3A8A]/40 dark:text-blue-100"
+                  : "rounded-br-md bg-gradient-primary text-primary-foreground" 
+                : message.type === "file" && attachments[0]?.file_name?.startsWith("voice-message")
+                  ? "rounded-bl-md bg-[#E3F2FD] text-[#0D47A1] dark:bg-[#1E3A8A]/40 dark:text-blue-100"
+                  : "rounded-bl-md bg-muted text-foreground"
             } ${message.deleted_at ? "italic opacity-60" : ""}`}
           >
             {replyTo && (
@@ -790,6 +938,7 @@ function MessageBubble({
                 <div className="font-semibold opacity-80">
                   {replyTo.type === "image" ? t("chat.image") : 
                    replyTo.type === "video" ? t("chat.video") : 
+                   replyTo.type === "audio" ? t("chat.audio") : 
                    replyTo.type === "file" ? t("chat.file") : 
                    replyTo.sender?.display_name}
                 </div>
@@ -861,15 +1010,34 @@ function MessageBubble({
                       className="max-h-80 w-full"
                       poster={attachments[0].url + "#t=0.1"}
                     >
-                      Your browser does not support the video tag.
                     </video>
                   </div>
                 )}
+                {message.type === "file" && !attachments[0] && (
+                  <div className="flex items-center gap-2 py-2 px-1">
+                    <Loader2 className="h-4 w-4 animate-spin opacity-50" />
+                    <span className="text-xs opacity-50 italic">Đang tải âm thanh...</span>
+                  </div>
+                )}
                 {message.type === "file" && attachments[0] && (
-                  <a href={attachments[0].url} target="_blank" rel="noreferrer" className="flex items-center gap-2 underline">
-                    <Paperclip className="h-4 w-4" />
-                    {attachments[0].file_name}
-                  </a>
+                  (() => {
+                    const att = attachments[0];
+                    const isAudio = att.mime_type?.startsWith("audio/") ||
+                                    att.file_name?.startsWith("voice-message") ||
+                                    att.file_name?.endsWith(".webm") ||
+                                    att.file_name?.endsWith(".ogg") ||
+                                    att.file_name?.endsWith(".mp3");
+                    return isAudio ? (
+                      <div className="py-1">
+                        <CustomAudioPlayer src={att.url} isMine={isMine} />
+                      </div>
+                    ) : (
+                      <a href={att.url} target="_blank" rel="noreferrer" className="flex items-center gap-2 underline">
+                        <Paperclip className="h-4 w-4" />
+                        {att.file_name}
+                      </a>
+                    );
+                  })()
                 )}
                 {message.content && (message.type === "text" || message.content !== attachments[0]?.file_name) && (
                   <div className="whitespace-pre-wrap break-words">{message.content}</div>

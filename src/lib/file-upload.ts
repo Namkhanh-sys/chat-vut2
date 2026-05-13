@@ -9,7 +9,8 @@ export interface UploadProgress {
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB for better video support
 const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"];
 const ALLOWED_VIDEO_TYPES = ["video/mp4", "video/webm", "video/ogg"];
-const ALLOWED_FILE_TYPES = [...ALLOWED_IMAGE_TYPES, ...ALLOWED_VIDEO_TYPES, "application/pdf", "application/msword", "text/plain"];
+const ALLOWED_AUDIO_TYPES = ["audio/mpeg", "audio/ogg", "audio/wav", "audio/webm", "audio/aac", "audio/m4a", "audio/mp3", "audio/webm;codecs=opus", "audio/mp4;codecs=mp4a.40.2"];
+const ALLOWED_FILE_TYPES = [...ALLOWED_IMAGE_TYPES, ...ALLOWED_VIDEO_TYPES, ...ALLOWED_AUDIO_TYPES, "application/pdf", "application/msword", "text/plain"];
 
 export async function uploadFile(
   file: File,
@@ -23,7 +24,11 @@ export async function uploadFile(
       return null;
     }
 
-    if (!ALLOWED_FILE_TYPES.includes(file.type)) {
+    const isAllowedType = ALLOWED_FILE_TYPES.includes(file.type) || 
+                         file.type.startsWith("audio/") || 
+                         file.type.startsWith("video/");
+
+    if (!isAllowedType) {
       onProgress?.({ progress: 0, status: "error", error: "Loại file không được phép" });
       return null;
     }
@@ -39,6 +44,7 @@ export async function uploadFile(
     let bucket = "message-files";
     if (ALLOWED_IMAGE_TYPES.includes(file.type)) bucket = "message-images";
     else if (ALLOWED_VIDEO_TYPES.includes(file.type)) bucket = "message-videos";
+    else if (ALLOWED_AUDIO_TYPES.includes(file.type)) bucket = "message-files";
 
     const { error: uploadError } = await supabase.storage.from(bucket).upload(path, file);
 
@@ -75,9 +81,14 @@ export function isVideoFile(mimeType: string): boolean {
   return ALLOWED_VIDEO_TYPES.includes(mimeType);
 }
 
+export function isAudioFile(mimeType: string): boolean {
+  return ALLOWED_AUDIO_TYPES.includes(mimeType);
+}
+
 export function getFileIcon(mimeType: string): string {
   if (ALLOWED_IMAGE_TYPES.includes(mimeType)) return "📷";
   if (ALLOWED_VIDEO_TYPES.includes(mimeType)) return "🎥";
+  if (ALLOWED_AUDIO_TYPES.includes(mimeType)) return "🎤";
   if (mimeType === "application/pdf") return "📄";
   if (mimeType.includes("word")) return "📝";
   return "📎";

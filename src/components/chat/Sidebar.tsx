@@ -19,6 +19,7 @@ import { FriendPanel } from "@/components/friends/FriendPanel";
 import { useFriends } from "@/hooks/use-friends";
 import { useSidebar } from "@/hooks/use-sidebar";
 import { toast } from "sonner";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 
 interface GroupRow {
   id: string;
@@ -30,7 +31,7 @@ interface GroupRow {
 }
 
 export function Sidebar() {
-  const { user, profile, signOut } = useAuth();
+  const { user, profile, signOut, refreshProfile } = useAuth();
   const { t, lang, setLang } = useI18n();
   const { theme, toggle } = useTheme();
   const { setIsOpen } = useSidebar();
@@ -40,6 +41,9 @@ export function Sidebar() {
   const [search, setSearch] = useState("");
   const [openCreate, setOpenCreate] = useState(false);
   const [openSearch, setOpenSearch] = useState(false);
+  const [openNameEdit, setOpenNameEdit] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [isUpdatingName, setIsUpdatingName] = useState(false);
   const { pendingRequests } = useFriends();
   const incomingRequests = pendingRequests.filter(req => req.addressee_id === user?.id);
 
@@ -95,6 +99,26 @@ export function Sidebar() {
   const [isUploading, setIsUploading] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement>(null);
 
+  const handleUpdateName = async () => {
+    if (!newName.trim() || !user) return;
+    try {
+      setIsUpdatingName(true);
+      const { error } = await supabase
+        .from("profiles")
+        .update({ display_name: newName.trim() } as any)
+        .eq("id", user.id);
+      if (error) throw error;
+      toast.success(t("common.success"));
+      await refreshProfile();
+      qc.invalidateQueries({ queryKey: ["profile", user.id] });
+      setOpenNameEdit(false);
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setIsUpdatingName(false);
+    }
+  };
+
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !user) return;
@@ -126,6 +150,7 @@ export function Sidebar() {
       if (updateError) throw updateError;
       
       toast.success("Đã cập nhật ảnh đại diện thành công!");
+      await refreshProfile();
       qc.invalidateQueries({ queryKey: ["profile", user.id] });
       qc.invalidateQueries({ queryKey: ["user"] });
     } catch (err: any) {
@@ -189,6 +214,10 @@ export function Sidebar() {
               <DropdownMenuItem onClick={toggle}>
                 {theme === "light" ? <Moon className="mr-2 h-4 w-4" /> : <Sun className="mr-2 h-4 w-4" />}
                 {theme === "light" ? t("common.theme.dark") : t("common.theme.light")}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => { setNewName(profile?.display_name || ""); setOpenNameEdit(true); }}>
+                <UserRound className="mr-2 h-4 w-4" />
+                {t("sidebar.changeName")}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => avatarInputRef.current?.click()} disabled={isUploading}>
                 {isUploading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Camera className="mr-2 h-4 w-4" />}
@@ -305,6 +334,33 @@ export function Sidebar() {
           <FriendPanel />
         </TabsContent>
       </Tabs>
+
+      <Dialog open={openNameEdit} onOpenChange={setOpenNameEdit}>
+        <DialogContent className="sm:max-w-[425px] rounded-3xl">
+          <DialogHeader>
+            <DialogTitle className="font-display text-xl">{t("sidebar.changeName")}</DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <Input
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder={t("auth.displayName")}
+              className="rounded-xl"
+              autoFocus
+              onKeyDown={(e) => e.key === "Enter" && handleUpdateName()}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setOpenNameEdit(false)} className="rounded-xl">
+              {t("common.cancel")}
+            </Button>
+            <Button onClick={handleUpdateName} disabled={isUpdatingName} className="rounded-xl bg-gradient-primary">
+              {isUpdatingName && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {t("common.save")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <CreateGroupDialog open={openCreate} onOpenChange={setOpenCreate} />
       <SearchUsersDialog open={openSearch} onOpenChange={setOpenSearch} />

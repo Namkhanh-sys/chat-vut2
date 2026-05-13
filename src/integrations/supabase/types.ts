@@ -510,7 +510,7 @@ export type Database = {
     }
     Enums: {
       member_role: "admin" | "mod" | "member"
-      message_type: "text" | "image" | "file" | "system" | "video"
+      message_type: "text" | "image" | "file" | "system" | "video" | "audio"
       notification_type: "message" | "mention" | "invite" | "system"
       user_status: "online" | "busy" | "invisible" | "offline"
     }
@@ -641,7 +641,7 @@ export const Constants = {
   public: {
     Enums: {
       member_role: ["admin", "mod", "member"],
-      message_type: ["text", "image", "file", "system", "video"],
+      message_type: ["text", "image", "file", "system", "video", "audio"],
       notification_type: ["message", "mention", "invite", "system"],
       user_status: ["online", "busy", "invisible", "offline"],
     },
