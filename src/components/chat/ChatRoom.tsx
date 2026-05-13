@@ -766,17 +766,19 @@ function MessageBubble({
           <div className="mb-0.5 px-2 text-xs font-semibold text-muted-foreground">{message.sender?.display_name}</div>
         )}
 
-        <div className="flex items-center gap-1">
+        <div className="relative flex items-center gap-1">
           {isMine && (hovered || isMenuOpen) && (
-            <MessageActions 
-              onReply={onReply} 
-              onEdit={onEdit} 
-              onDelete={onDelete} 
-              onReact={onReact} 
-              onOpenChange={setIsMenuOpen}
-              canEdit={message.type === "text"} 
-              t={t} 
-            />
+            <div className="absolute right-full mr-2 z-10 top-1/2 -translate-y-1/2">
+              <MessageActions 
+                onReply={onReply} 
+                onEdit={onEdit} 
+                onDelete={onDelete} 
+                onReact={onReact} 
+                onOpenChange={setIsMenuOpen}
+                canEdit={message.type === "text"} 
+                t={t} 
+              />
+            </div>
           )}
           <div
             className={`relative animate-bubble-in rounded-2xl px-3.5 py-2 ${
@@ -878,14 +880,16 @@ function MessageBubble({
             {message.is_edited && <span className="ml-1 text-[10px] opacity-60">({t("chat.edited")})</span>}
           </div>
           {!isMine && (hovered || isMenuOpen) && (
-            <MessageActions 
-              onReply={onReply} 
-              onEdit={onEdit} 
-              onDelete={onDelete} 
-              onReact={onReact} 
-              onOpenChange={setIsMenuOpen}
-              t={t} 
-            />
+            <div className="absolute left-full ml-2 z-10 top-1/2 -translate-y-1/2">
+              <MessageActions 
+                onReply={onReply} 
+                onEdit={onEdit} 
+                onDelete={onDelete} 
+                onReact={onReact} 
+                onOpenChange={setIsMenuOpen}
+                t={t} 
+              />
+            </div>
           )}
         </div>
 
