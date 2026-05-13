@@ -101,8 +101,8 @@ export function VoiceRecorder({ onRecordingComplete, onCancel, isUploading }: Vo
 
   return (
     <div className={cn(
-      "flex items-center gap-2 bg-card/90 border border-primary/20 backdrop-blur-md px-3 py-1.5 rounded-2xl animate-in fade-in slide-in-from-right-4 duration-300",
-      audioBlob ? "min-w-[340px]" : ""
+      "flex items-center gap-2 bg-card/90 border border-primary/20 backdrop-blur-md px-2 py-1.5 rounded-2xl animate-in fade-in slide-in-from-right-4 duration-300 w-full max-w-[340px]",
+      audioBlob ? "flex-1" : "w-fit"
     )}>
       {isRecording ? (
         <>

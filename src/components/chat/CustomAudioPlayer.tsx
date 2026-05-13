@@ -92,7 +92,7 @@ export function CustomAudioPlayer({ src, isMine }: CustomAudioPlayerProps) {
 
   return (
     <div className={cn(
-      "flex flex-col gap-1 p-2.5 rounded-2xl min-w-[260px] transition-all",
+      "flex flex-col gap-1 p-2 rounded-xl w-full max-w-[340px] transition-all",
       isMine ? "bg-primary/5" : "bg-muted/50"
     )}>
       <audio
@@ -151,7 +151,7 @@ export function CustomAudioPlayer({ src, isMine }: CustomAudioPlayerProps) {
                 <div 
                   key={i}
                   className={cn(
-                    "w-[3px] rounded-full transition-all duration-300",
+                    "w-[2px] sm:w-[3px] rounded-full transition-all duration-300",
                     isPast ? "bg-[#0066FF]" : "bg-muted-foreground/20",
                     isPlaying && isPast ? "animate-pulse" : ""
                   )}
