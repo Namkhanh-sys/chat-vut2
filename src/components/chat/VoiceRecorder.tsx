@@ -3,6 +3,7 @@ import { Mic, Square, X, Send, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { useI18n } from "@/lib/i18n";
 import { CustomAudioPlayer } from "./CustomAudioPlayer";
 
 interface VoiceRecorderProps {
@@ -12,6 +13,7 @@ interface VoiceRecorderProps {
 }
 
 export function VoiceRecorder({ onRecordingComplete, onCancel, isUploading }: VoiceRecorderProps) {
+  const { t } = useI18n();
   const [isRecording, setIsRecording] = useState(false);
   const [duration, setDuration] = useState(0);
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
@@ -126,7 +128,7 @@ export function VoiceRecorder({ onRecordingComplete, onCancel, isUploading }: Vo
       ) : audioBlob && previewUrl ? (
         <div className="flex flex-col w-full">
           <div className="flex items-center justify-between mb-1 px-1">
-             <span className="text-[10px] font-bold uppercase tracking-wider text-primary opacity-80">Nghe lại trước khi gửi</span>
+             <span className="text-[10px] font-bold uppercase tracking-wider text-primary opacity-80">{t("chat.voice.preview")}</span>
              <span className="text-[10px] font-medium opacity-60">{formatDuration(duration)}</span>
           </div>
           <div className="flex items-center gap-2">
@@ -152,7 +154,7 @@ export function VoiceRecorder({ onRecordingComplete, onCancel, isUploading }: Vo
       ) : (
         <div className="flex items-center gap-3 px-4 py-2">
           <Loader2 className="h-5 w-5 animate-spin text-primary" />
-          <span className="text-sm text-muted-foreground font-medium">Đang chuẩn bị...</span>
+          <span className="text-sm text-muted-foreground font-medium">{t("chat.voice.preparing")}</span>
         </div>
       )}
     </div>

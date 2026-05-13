@@ -84,6 +84,9 @@ const dict = {
     "chat.video": "Video",
     "chat.file": "Tệp",
     "chat.audio": "Ghi âm",
+    "chat.voice.preview": "Nghe lại trước khi gửi",
+    "chat.voice.preparing": "Đang chuẩn bị...",
+    "chat.voice.loading": "Đang tải âm thanh...",
 
     "friends.search": "Tìm người dùng...",
     "friends.empty": "Chưa có bạn bè nào",
@@ -215,6 +218,9 @@ const dict = {
     "chat.video": "Video",
     "chat.file": "File",
     "chat.audio": "Voice message",
+    "chat.voice.preview": "Preview before sending",
+    "chat.voice.preparing": "Preparing...",
+    "chat.voice.loading": "Loading audio...",
 
     "friends.search": "Search users...",
     "friends.empty": "No friends yet",

@@ -1016,7 +1016,7 @@ function MessageBubble({
                 {message.type === "file" && !attachments[0] && (
                   <div className="flex items-center gap-2 py-2 px-1">
                     <Loader2 className="h-4 w-4 animate-spin opacity-50" />
-                    <span className="text-xs opacity-50 italic">Đang tải âm thanh...</span>
+                    <span className="text-xs opacity-50 italic">{t("chat.voice.loading")}</span>
                   </div>
                 )}
                 {message.type === "file" && attachments[0] && (
