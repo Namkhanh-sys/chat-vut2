@@ -113,6 +113,9 @@ const dict = {
     "permissions.promote": "Thăng cấp Admin",
     "permissions.demote": "Gỡ quyền Admin",
     "permissions.readOnly": "Chế độ xem",
+    "permissions.kick": "Xóa khỏi nhóm",
+    "permissions.kickConfirm": "Bạn có chắc muốn mời thành viên này rời khỏi nhóm?",
+    "permissions.invite": "Mời thêm bạn bè",
     "permissions.denied": "Bạn không có quyền nhắn tin trong nhóm này",
 
     "common.save": "Lưu",
@@ -238,6 +241,9 @@ const dict = {
     "permissions.promote": "Promote to Admin",
     "permissions.demote": "Demote to Member",
     "permissions.readOnly": "View only",
+    "permissions.kick": "Kick from group",
+    "permissions.kickConfirm": "Are you sure you want to kick this member?",
+    "permissions.invite": "Invite friends",
     "permissions.denied": "You don't have permission to message in this group",
 
     "common.save": "Save",

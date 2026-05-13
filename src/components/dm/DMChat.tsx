@@ -40,7 +40,7 @@ export function DMChat() {
   const [otherUser, setOtherUser] = useState<OtherUserProfile | null>(null);
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
-  const [callConfig, setCallConfig] = useState<{ isVideo: boolean, messageId?: string } | null>(null);
+  const [callConfig, setCallConfig] = useState<{ isVideo: boolean, messageId?: string, isGroup?: boolean } | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [replyTo, setReplyTo] = useState<DirectMessage | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
