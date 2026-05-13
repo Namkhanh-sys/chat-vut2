@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Loader2, Check, Users, UserPlus, Search } from "lucide-react";
@@ -29,11 +29,23 @@ export function InviteMembersDialog({ groupId, existingMemberIds }: { groupId: s
     );
   };
 
-  // Lọc bạn bè chưa tham gia nhóm và khớp với tìm kiếm
-  const inviteableFriends = friends.filter(f => 
-    !existingMemberIds.includes(f.friend.id) &&
-    (f.friend.display_name.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+  const removeAccents = (str: string) => {
+    return str.normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/đ/g, "d")
+      .replace(/Đ/g, "D");
+  };
+
+  // Lọc bạn bè chưa tham gia nhóm và khớp với tìm kiếm (không phân biệt dấu)
+  const inviteableFriends = useMemo(() => {
+    return friends.filter(f => {
+      const isNotMember = !existingMemberIds.includes(f.friend.id);
+      const name = f.friend.display_name.toLowerCase();
+      const searchLower = searchTerm.toLowerCase();
+      const matchesSearch = name.includes(searchLower) || removeAccents(name).includes(removeAccents(searchLower));
+      return isNotMember && matchesSearch;
+    });
+  }, [friends, existingMemberIds, searchTerm]);
 
   const handleInvite = async () => {
     if (!user || selectedFriends.length === 0) return;
@@ -69,7 +81,7 @@ export function InviteMembersDialog({ groupId, existingMemberIds }: { groupId: s
         <Button 
           variant="ghost" 
           size="icon" 
-          className="rounded-xl h-9 w-9 text-muted-foreground hover:text-primary transition-all"
+          className="rounded-xl h-9 w-9 text-muted-foreground hover:text-primary transition-all shrink-0"
           title={t("permissions.invite")}
         >
           <UserPlus className="h-5 w-5" />

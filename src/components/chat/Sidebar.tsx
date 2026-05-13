@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import { Link, useParams, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Search, Settings, LogOut, MessageCircleHeart, Languages, Sun, Moon, Users, UserSearch, UserRound, Bell, Camera, Loader2 } from "lucide-react";
@@ -46,6 +46,7 @@ export function Sidebar() {
   const { data: groups = [], isLoading } = useQuery({
     queryKey: ["groups", user?.id],
     enabled: !!user,
+    staleTime: 1000 * 60 * 5, // Cache for 5 minutes
     queryFn: async (): Promise<GroupRow[]> => {
       const { data, error } = await supabase
         .from("group_members")
@@ -76,7 +77,20 @@ export function Sidebar() {
     return () => { supabase.removeChannel(ch); };
   }, [user, qc]);
 
-  const filtered = groups.filter((g) => g.name.toLowerCase().includes(search.toLowerCase()));
+  const removeAccents = (str: string) => {
+    return str.normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/đ/g, "d")
+      .replace(/Đ/g, "D");
+  };
+
+  const filtered = useMemo(() => {
+    return groups.filter((g) => {
+      const name = g.name.toLowerCase();
+      const searchLower = search.toLowerCase();
+      return name.includes(searchLower) || removeAccents(name).includes(removeAccents(searchLower));
+    });
+  }, [groups, search]);
 
   const [isUploading, setIsUploading] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement>(null);
@@ -112,10 +126,8 @@ export function Sidebar() {
       if (updateError) throw updateError;
       
       toast.success("Đã cập nhật ảnh đại diện thành công!");
-      
-      setTimeout(() => {
-        window.location.reload();
-      }, 1000);
+      qc.invalidateQueries({ queryKey: ["profile", user.id] });
+      qc.invalidateQueries({ queryKey: ["user"] });
     } catch (err: any) {
       console.error("Avatar update error:", err);
       toast.error("Lỗi: " + (err.message || "Không thể tải ảnh lên"));
@@ -252,7 +264,7 @@ export function Sidebar() {
               </div>
             ) : (
               <ul className="space-y-1">
-                {filtered.map((g) => {
+                {filtered.map((g: GroupRow) => {
                   const active = params.groupId === g.id;
                   return (
                     <li key={g.id}>

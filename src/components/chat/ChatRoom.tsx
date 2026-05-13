@@ -91,9 +91,10 @@ export function ChatRoom({ groupId }: { groupId: string }) {
   });
 
   // Current user's membership
-  const { data: myMembership } = useQuery({
+  const { data: myMembership, isLoading: isLoadingMembership } = useQuery({
     queryKey: ["my-membership", groupId, user?.id],
     enabled: !!user && !!groupId,
+    staleTime: 1000 * 60 * 5, // Cache for 5 minutes
     queryFn: async () => {
       const { data, error } = await (supabase
         .from("group_members") as any)
@@ -430,12 +431,12 @@ export function ChatRoom({ groupId }: { groupId: string }) {
         <Button
           variant="ghost"
           size="icon"
-          className="h-9 w-9 shrink-0 md:hidden"
+          className="h-9 w-9 shrink-0"
           onClick={toggle}
         >
           <Menu className="h-5 w-5" />
         </Button>
-        <div className="relative group/avatar">
+        <div className="relative group/avatar hidden md:block">
           <Avatar className="h-10 w-10 shrink-0">
             <AvatarImage src={group.avatar_url ?? undefined} />
             <AvatarFallback className="bg-gradient-mint">{group.name[0]?.toUpperCase()}</AvatarFallback>
@@ -451,13 +452,13 @@ export function ChatRoom({ groupId }: { groupId: string }) {
           )}
           <input ref={groupAvatarInputRef} type="file" hidden accept="image/*" onChange={handleGroupAvatar} />
         </div>
-        <div className="flex-1 min-w-0">
-          <div className="truncate font-display text-lg font-bold">{group.name}</div>
-          <div className="flex items-center gap-1 text-xs text-muted-foreground">
-            <Users className="h-3 w-3" />
+        <div className="flex-1 min-w-0 ml-1 md:ml-0">
+          <div className="truncate font-display text-base md:text-lg font-bold leading-tight">{group.name}</div>
+          <div className="flex items-center gap-1 text-[10px] md:text-xs text-muted-foreground opacity-70">
+            <Users className="h-2.5 w-2.5" />
             {memberCount} {t("group.members")}
             {myMembership?.can_message === false && (
-              <Badge variant="destructive" className="ml-2 text-[8px] px-1 py-0 h-3">{t("permissions.readOnly")}</Badge>
+              <Badge variant="destructive" className="ml-1 text-[7px] px-1 py-0 h-2.5">{t("permissions.readOnly")}</Badge>
             )}
           </div>
         </div>
@@ -465,8 +466,8 @@ export function ChatRoom({ groupId }: { groupId: string }) {
           <Button 
             variant="ghost" 
             size="icon" 
-            className="rounded-xl h-9 w-9 text-muted-foreground hover:text-primary"
-            disabled={!user || myMembership?.can_call === false}
+            className="rounded-xl h-9 w-9 text-muted-foreground hover:text-primary shrink-0 transition-all"
+            disabled={isLoadingMembership || !user || myMembership?.can_call === false}
             onClick={async () => {
               if (!user) return;
               const { data } = await supabase.from("messages").insert({
@@ -478,13 +479,17 @@ export function ChatRoom({ groupId }: { groupId: string }) {
               setCallConfig({ isVideo: false, messageId: data?.id, isGroup: true });
             }}
           >
-            <Phone className={cn("h-5 w-5", myMembership?.can_call === false && "opacity-50")} />
+            {isLoadingMembership ? (
+              <Loader2 className="h-4 w-4 animate-spin opacity-20" />
+            ) : (
+              <Phone className={cn("h-5 w-5", myMembership?.can_call === false && "opacity-50")} />
+            )}
           </Button>
           <Button 
             variant="ghost" 
             size="icon" 
-            className="rounded-xl h-9 w-9 text-muted-foreground hover:text-primary"
-            disabled={!user || myMembership?.can_call === false}
+            className="rounded-xl h-9 w-9 text-muted-foreground hover:text-primary shrink-0 transition-all"
+            disabled={isLoadingMembership || !user || myMembership?.can_call === false}
             onClick={async () => {
               if (!user) return;
               const { data } = await supabase.from("messages").insert({
@@ -496,13 +501,23 @@ export function ChatRoom({ groupId }: { groupId: string }) {
               setCallConfig({ isVideo: true, messageId: data?.id, isGroup: true });
             }}
           >
-            <Video className={cn("h-5 w-5", myMembership?.can_call === false && "opacity-50")} />
+            {isLoadingMembership ? (
+              <Loader2 className="h-4 w-4 animate-spin opacity-20" />
+            ) : (
+              <Video className={cn("h-5 w-5", myMembership?.can_call === false && "opacity-50")} />
+            )}
           </Button>
-          {isAdmin && (
-            <InviteMembersDialog 
-              groupId={groupId} 
-              existingMemberIds={members?.map((m: any) => m.user.id) || []} 
-            />
+          {(isLoadingMembership || isAdmin) && (
+            <div className="w-9 h-9 flex items-center justify-center shrink-0">
+              {isLoadingMembership ? (
+                <div className="h-5 w-5 rounded-full bg-muted animate-pulse" />
+              ) : (
+                <InviteMembersDialog 
+                  groupId={groupId} 
+                  existingMemberIds={members?.map((m: any) => m.user.id) || []} 
+                />
+              )}
+            </div>
           )}
           <GroupMembersSheet 
             groupId={groupId} 
@@ -516,7 +531,7 @@ export function ChatRoom({ groupId }: { groupId: string }) {
           />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="rounded-xl h-9 w-9 text-muted-foreground hover:text-primary">
+              <Button variant="ghost" size="icon" className="rounded-xl h-9 w-9 text-muted-foreground hover:text-primary shrink-0">
                 <MoreHorizontal className="h-5 w-5" />
               </Button>
             </DropdownMenuTrigger>
@@ -639,7 +654,7 @@ export function ChatRoom({ groupId }: { groupId: string }) {
       <div className="border-t bg-card px-4 py-3">
         <div className="mx-auto flex max-w-3xl items-end gap-2">
           <input ref={fileInputRef} type="file" hidden onChange={handleFile} />
-          <Button size="icon" variant="ghost" onClick={() => fileInputRef.current?.click()} disabled={sending}>
+          <Button size="icon" variant="ghost" className="h-10 w-10 shrink-0" onClick={() => fileInputRef.current?.click()} disabled={sending}>
             <Paperclip className="h-5 w-5" />
           </Button>
           <EmojiPickerComponent
@@ -952,9 +967,20 @@ function GroupMembersSheet({
   const { t } = useI18n();
   const qc = useQueryClient();
 
-  const filteredMembers = members?.filter((m: any) => 
-    m.user.display_name.toLowerCase().includes(search.toLowerCase())
-  );
+  const removeAccents = (str: string) => {
+    return str.normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/đ/g, "d")
+      .replace(/Đ/g, "D");
+  };
+
+  const filteredMembers = useMemo(() => {
+    return members?.filter((m: any) => {
+      const name = m.user.display_name.toLowerCase();
+      const searchLower = search.toLowerCase();
+      return name.includes(searchLower) || removeAccents(name).includes(removeAccents(searchLower));
+    });
+  }, [members, search]);
 
   const handleTogglePermission = async (userId: string, field: 'can_message' | 'can_call', value: boolean) => {
     const { error } = await (supabase
